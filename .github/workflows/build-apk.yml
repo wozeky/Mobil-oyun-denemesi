@@ -1,0 +1,44 @@
+name: Son Hat Android APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GODOT_VERSION: 4.3-stable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install Android SDK components
+        run: sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+      - name: Install Godot and Android export templates
+        run: |
+          base="https://github.com/godotengine/godot-builds/releases/download/$GODOT_VERSION"
+          archive="Godot_v${GODOT_VERSION}_linux.x86_64"
+          curl -fsSL --retry 3 "$base/$archive.zip" -o "$RUNNER_TEMP/godot.zip"
+          unzip -q "$RUNNER_TEMP/godot.zip" -d "$RUNNER_TEMP"
+          echo "GODOT_BIN=$RUNNER_TEMP/$archive" >> "$GITHUB_ENV"
+          curl -fsSL --retry 3 "$base/Godot_v${GODOT_VERSION}_export_templates.tpz" -o "$RUNNER_TEMP/templates.tpz"
+          template_dir="$HOME/.local/share/godot/export_templates/4.3.stable"
+          mkdir -p "$template_dir"
+          unzip -j "$RUNNER_TEMP/templates.tpz" 'templates/android_debug.apk' -d "$template_dir"
+      - name: Test, build and verify APK signature
+        run: |
+          bash tools/export_android.sh
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose build/Son-Hat.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Son-Hat-Android
+          path: build/Son-Hat.apk
+          if-no-files-found: error
